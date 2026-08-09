@@ -7,6 +7,7 @@ See [ROADMAP.md](ROADMAP.md) for the staged plan. This project is a hobby learni
 - When starting a new roadmap stage, create a context file for it under `docs/stages/` (e.g. `docs/stages/stage0.md`) describing scope, decisions made, and what "done" looks like for that stage.
 - Whenever a project/architecture decision needs a human call (tooling, config format, algorithm choice, API shape, etc.), ask before proceeding — don't assume.
 - Commit and push to `origin/main` after each major change (a stage's scaffolding, a working feature, a passing test suite) — not after every tiny edit.
+- Keep [README.md](README.md) up to date whenever it's needed — new setup/run steps, status, or stack changes — as part of the same change, not as an afterthought.
 
 ## Confirmed stack decisions
 

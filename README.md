@@ -4,11 +4,21 @@ A 2D continuous-physics soccer pitch simulation, built as a hobby project to pra
 
 ## Status
 
-Planning complete, implementation not yet started. See [ROADMAP.md](ROADMAP.md) for the full staged plan (Stage 0: scaffolding).
+Stage 0 (scaffolding) complete — package skeleton, config system, and dev tooling are in place, no simulation logic yet. See [ROADMAP.md](ROADMAP.md) for the full staged plan and [docs/stages/](docs/stages/) for per-stage notes.
+
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/).
+
+```
+uv sync         # create the .venv and install dependencies from uv.lock
+uv run pytest   # run the test suite
+```
 
 ## Stack
 
-- Python
+- Python, managed with `uv`
 - Gymnasium-style env API, PettingZoo for multi-agent RL
 - PyTorch, stable-baselines3, scikit-learn/xgboost
 - pygame/matplotlib for visualization
+- Ruff + Black (pre-commit) for lint/format, pytest for tests
