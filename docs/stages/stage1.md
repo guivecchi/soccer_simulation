@@ -1,5 +1,7 @@
 # Stage 1 — Core physics/rules engine (headless)
 
+For a concept-level and implementation-level walkthrough (with diagrams), see [stage1-concepts.md](stage1-concepts.md).
+
 ## Scope
 
 A pure, deterministic `step(state, actions, config) -> (state, events)` kernel: ball movement under friction, player movement under acceleration/speed limits, kicking (a player can impart velocity to the ball while in possession range), pitch-boundary and goal detection. No rendering, no ML, no game-restart logic (throw-ins/corners/kickoffs after a goal) yet — those are gameplay/behavior concerns for later stages.
