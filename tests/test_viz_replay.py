@@ -13,7 +13,7 @@ import numpy as np
 from soccersim.config import SimConfig
 from soccersim.physics.events import Event, EventType
 from soccersim.physics.reset import build_kickoff_state
-from soccersim.physics.state import PlayerAction
+from soccersim.physics.state import Ball, MatchState, Player, PlayerAction
 from soccersim.physics.step import step
 from soccersim.physics.vector import vec2
 from soccersim.viz.replay import ReplayWriter, load_replay
@@ -54,6 +54,8 @@ def test_replay_round_trip_preserves_config_state_actions_and_events(tmp_path):
             assert loaded_player.team == recorded_player.team
             np.testing.assert_array_equal(loaded_player.position, recorded_player.position)
             np.testing.assert_array_equal(loaded_player.velocity, recorded_player.velocity)
+            np.testing.assert_array_equal(loaded_player.facing, recorded_player.facing)
+        assert loaded_state.ball.carrier_id == recorded_state.ball.carrier_id
 
     # Step 0 has no actions/events; steps 1..3 carry the kick action we sent.
     assert replay.steps[0].actions == {}
@@ -62,6 +64,26 @@ def test_replay_round_trip_preserves_config_state_actions_and_events(tmp_path):
         loaded_action = replay.steps[i].actions[0]
         np.testing.assert_array_equal(loaded_action.move, actions[0].move)
         np.testing.assert_array_equal(loaded_action.kick, actions[0].kick)
+
+
+def test_replay_round_trip_preserves_a_non_none_carrier_id(tmp_path):
+    """The kickoff-based round-trip test above never has a carried ball (the
+    scripted actions always kick, which overrides carrying — see
+    physics/step.py). Exercise the `carrier_id` field directly so a replay
+    of a real dribble doesn't silently lose who's carrying the ball.
+    """
+    config = SimConfig(players_per_team=0)
+    player = Player(player_id=0, team=0, position=vec2(0.0, 0.0), velocity=vec2(1.0, 0.0))
+    ball = Ball(position=vec2(0.2, 0.0), velocity=vec2(1.0, 0.0), carrier_id=0)
+    state = MatchState(time=0.0, ball=ball, players=[player], score=(0, 0))
+    replay_path = tmp_path / "carried.jsonl"
+
+    with ReplayWriter(replay_path, config) as writer:
+        writer.write_step(state, {}, [])
+
+    replay = load_replay(replay_path)
+
+    assert replay.steps[0].state.ball.carrier_id == 0
 
 
 def test_replay_round_trip_preserves_none_kick_and_events(tmp_path):

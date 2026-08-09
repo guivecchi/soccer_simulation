@@ -23,7 +23,7 @@ uv run python scripts/run_match.py --record replays/demo.jsonl   # also record t
 uv run python scripts/watch_replay.py replays/demo.jsonl   # play back a recorded replay
 ```
 
-Controls (live window): arrow keys move; hold Space to charge a kick and release to fire it in whichever direction you're currently facing (a bar shows the charge level); Tab switches which player you're controlling; Esc or closing the window quits.
+Controls (live window): arrow keys move; hold Space to charge a kick and release to fire it in whichever direction you're currently facing (a bar shows the charge level); Tab switches which player you're controlling (highlighted with a yellow halo). Every player shows a small white nose pointing in their facing direction. Esc or closing the window quits.
 
 ## Stack
 

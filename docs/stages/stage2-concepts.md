@@ -135,9 +135,10 @@ The first step record (index 0) is always the initial kickoff state with empty `
 
 | Concern | Test | File |
 |---|---|---|
-| Replay round-trip is lossless (state, actions incl. `kick=None`, events, config) | `test_replay_round_trip_preserves_config_state_actions_and_events`, `test_replay_round_trip_preserves_none_kick_and_events` | `tests/test_viz_replay.py` |
+| Replay round-trip is lossless (state incl. `facing`/`carrier_id`, actions incl. `kick=None`, events, config) | `test_replay_round_trip_preserves_config_state_actions_and_events`, `test_replay_round_trip_preserves_a_non_none_carrier_id`, `test_replay_round_trip_preserves_none_kick_and_events` | `tests/test_viz_replay.py` |
 | Renderer runs without a real display and actually paints something | `test_draw_match_state_runs_headlessly_and_paints_pitch_and_ball` | `tests/test_viz_render.py` |
 | `world_to_screen` scaling/flip is directionally correct | `test_world_to_screen_maps_pitch_center_and_corner_consistently` | `tests/test_viz_render.py` |
+| Controlled-player highlight and facing-nose indicator are actually drawn | `test_draw_match_state_highlights_the_controlled_player`, `test_draw_match_state_draws_a_facing_indicator_beyond_the_player_circle` | `tests/test_viz_render.py` |
 
 Rendering tests set `SDL_VIDEODRIVER=dummy` (and `SDL_AUDIODRIVER=dummy`) so pygame never tries to open a real window — `pygame.draw`/`pygame.font` work identically against an off-screen `pygame.Surface`, which is what makes headless CI runs possible at all.
 
@@ -147,6 +148,7 @@ Rendering tests set `SDL_VIDEODRIVER=dummy` (and `SDL_AUDIODRIVER=dummy`) so pyg
 |---|---|
 | World → screen coordinate transform | `viz/render.py::world_to_screen` |
 | Frame drawing (pitch, goals, players, ball, HUD) | `viz/render.py::draw_match_state` |
+| Facing indicator, controlled-player highlight | `viz/render.py::_draw_players`, `_facing_indicator_points` |
 | Replay writer (JSONL, one meta line + N step lines) | `viz/replay.py::ReplayWriter` |
 | Replay loader | `viz/replay.py::load_replay` |
 | numpy ↔ JSON conversions | `viz/replay.py::_ball_to_jsonable` and siblings |

@@ -21,7 +21,14 @@ import pygame
 from soccersim.config import SimConfig
 from soccersim.physics.events import Event, EventType
 from soccersim.physics.reset import build_kickoff_state
-from soccersim.viz.render import draw_match_state, window_size, world_to_screen
+from soccersim.viz.render import (
+    CONTROLLED_HIGHLIGHT_COLOR,
+    FACING_INDICATOR_COLOR,
+    PLAYER_RADIUS_PX,
+    draw_match_state,
+    window_size,
+    world_to_screen,
+)
 
 
 def test_window_size_scales_with_pitch_dimensions():
@@ -60,6 +67,43 @@ def test_draw_match_state_runs_headlessly_and_paints_pitch_and_ball():
         for y in range(0, surface.get_height(), 7)
     }
     assert PITCH_COLOR in colors_present
+    pygame.quit()
+
+
+def test_draw_match_state_highlights_the_controlled_player():
+    pygame.init()
+    config = SimConfig(players_per_team=1)
+    state = build_kickoff_state(config)
+    surface = pygame.Surface(window_size(config))
+    controlled_id = state.players[0].player_id
+    center = world_to_screen(state.players[0].position, config)
+    # Directly above the player: inside the highlight halo's radius, but off
+    # the horizontal facing nose (default facing is purely +/-x), so it only
+    # picks up the halo.
+    probe = (center[0], center[1] - (PLAYER_RADIUS_PX + 3))
+
+    draw_match_state(surface, state, config, controlled_player_id=controlled_id)
+    assert surface.get_at(probe)[:3] == CONTROLLED_HIGHLIGHT_COLOR
+
+    draw_match_state(surface, state, config, controlled_player_id=None)
+    assert surface.get_at(probe)[:3] != CONTROLLED_HIGHLIGHT_COLOR
+    pygame.quit()
+
+
+def test_draw_match_state_draws_a_facing_indicator_beyond_the_player_circle():
+    pygame.init()
+    config = SimConfig(players_per_team=1)
+    state = build_kickoff_state(config)
+    surface = pygame.Surface(window_size(config))
+    # Team 0 faces world +x at kickoff (see physics/reset.py), which is also
+    # screen +x (the facing/screen axis flip only affects y) — so the nose
+    # should extend to the right of the player, just past their radius.
+    center = world_to_screen(state.players[0].position, config)
+    probe = (center[0] + PLAYER_RADIUS_PX + 3, center[1])
+
+    draw_match_state(surface, state, config)
+
+    assert surface.get_at(probe)[:3] == FACING_INDICATOR_COLOR
     pygame.quit()
 
 

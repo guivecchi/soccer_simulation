@@ -37,12 +37,25 @@ BALL_RADIUS_PX = 6
 PLAYER_RADIUS_PX = 10
 GOAL_DEPTH_M = 2.0  # how far the drawn goal box protrudes past the goal line
 
+# How far the facing "nose" tip sits beyond the player's own radius, and how
+# wide its base is — small enough not to read as a second player, big enough
+# to see which way someone's oriented at a glance.
+FACING_INDICATOR_LENGTH_PX = 7
+FACING_INDICATOR_WIDTH_PX = 5
+
+# How much bigger than the player the highlight halo is drawn (see
+# _draw_players): the halo is a solid disc drawn *underneath* the player, so
+# it only needs to be wide enough to peek out from behind them.
+CONTROLLED_HIGHLIGHT_MARGIN_PX = 5
+
 TEAM_COLORS = {0: (214, 69, 65), 1: (65, 105, 225)}
 PITCH_COLOR = (33, 122, 62)
 LINE_COLOR = (230, 230, 230)
 BALL_COLOR = (245, 235, 90)
 HUD_BG_COLOR = (18, 18, 18)
 HUD_TEXT_COLOR = (235, 235, 235)
+FACING_INDICATOR_COLOR = (255, 255, 255)
+CONTROLLED_HIGHLIGHT_COLOR = (255, 215, 0)
 
 
 def window_size(config: SimConfig) -> tuple[int, int]:
@@ -60,25 +73,83 @@ def world_to_screen(position, config: SimConfig) -> tuple[int, int]:
     return round(px), round(py)
 
 
-def draw_match_state(surface: pygame.Surface, state: MatchState, config: SimConfig) -> None:
+def draw_match_state(
+    surface: pygame.Surface,
+    state: MatchState,
+    config: SimConfig,
+    controlled_player_id: int | None = None,
+) -> None:
     """Draw one full frame: pitch markings, goals, players, ball, HUD.
 
     Pure with respect to `state`/`config` — the only side effect is drawing
     onto `surface`. Safe to call against a plain off-screen `pygame.Surface`
     (no display needed), which is what makes it testable headlessly.
+
+    `controlled_player_id` is display-only overlay information, not part of
+    `MatchState` — it's who a human is currently driving from the keyboard in
+    `scripts/run_match.py`, which has no meaning during replay playback
+    (`scripts/watch_replay.py` just leaves it as the default `None`).
     """
     surface.fill(PITCH_COLOR)
     _draw_pitch_markings(surface, config)
     _draw_goals(surface, config)
-
-    for player in state.players:
-        center = world_to_screen(player.position, config)
-        pygame.draw.circle(surface, TEAM_COLORS[player.team], center, PLAYER_RADIUS_PX)
+    _draw_players(surface, state, config, controlled_player_id)
 
     ball_center = world_to_screen(state.ball.position, config)
     pygame.draw.circle(surface, BALL_COLOR, ball_center, BALL_RADIUS_PX)
 
     _draw_hud(surface, state)
+
+
+def _draw_players(
+    surface: pygame.Surface,
+    state: MatchState,
+    config: SimConfig,
+    controlled_player_id: int | None,
+) -> None:
+    for player in state.players:
+        center = world_to_screen(player.position, config)
+
+        if player.player_id == controlled_player_id:
+            # A solid halo drawn *underneath* the smaller player circle —
+            # simpler than an outline ring, and it can't visually clash with
+            # the facing indicator drawn on top afterward.
+            pygame.draw.circle(
+                surface,
+                CONTROLLED_HIGHLIGHT_COLOR,
+                center,
+                PLAYER_RADIUS_PX + CONTROLLED_HIGHLIGHT_MARGIN_PX,
+            )
+
+        pygame.draw.circle(surface, TEAM_COLORS[player.team], center, PLAYER_RADIUS_PX)
+        pygame.draw.polygon(
+            surface, FACING_INDICATOR_COLOR, _facing_indicator_points(center, player.facing)
+        )
+
+
+def _facing_indicator_points(center: tuple[int, int], facing) -> list[tuple[float, float]]:
+    """Triangle "nose" pointing in `facing`'s direction, from the rim outward.
+
+    `facing` is a world-space unit vector (`+y` = "up" the pitch); screen
+    space has `+y` pointing *down*, so its y component is negated here — the
+    same axis flip `world_to_screen()` applies to positions, just applied to
+    a direction instead. The x component is unaffected by the flip.
+    """
+    dx, dy = float(facing[0]), -float(facing[1])
+    # Perpendicular to (dx, dy), for the two base corners of the triangle.
+    px, py = -dy, dx
+
+    tip_x = center[0] + dx * (PLAYER_RADIUS_PX + FACING_INDICATOR_LENGTH_PX)
+    tip_y = center[1] + dy * (PLAYER_RADIUS_PX + FACING_INDICATOR_LENGTH_PX)
+    base_x = center[0] + dx * (PLAYER_RADIUS_PX - 2)
+    base_y = center[1] + dy * (PLAYER_RADIUS_PX - 2)
+    half_width = FACING_INDICATOR_WIDTH_PX / 2
+
+    return [
+        (tip_x, tip_y),
+        (base_x + px * half_width, base_y + py * half_width),
+        (base_x - px * half_width, base_y - py * half_width),
+    ]
 
 
 def _draw_pitch_markings(surface: pygame.Surface, config: SimConfig) -> None:

@@ -149,7 +149,7 @@ def main() -> None:
         if writer is not None:
             writer.write_step(state, actions, events)
 
-        draw_match_state(screen, state, config)
+        draw_match_state(screen, state, config, controlled_player_id=controlled_player_id)
         _draw_kick_charge_bar(screen, kick_charger.charge)
         pygame.display.flip()
         clock.tick(round(1.0 / config.dt))

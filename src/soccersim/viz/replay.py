@@ -127,11 +127,22 @@ def load_replay(path: str | Path) -> Replay:
 
 
 def _ball_to_jsonable(ball: Ball) -> dict:
-    return {"position": ball.position.tolist(), "velocity": ball.velocity.tolist()}
+    return {
+        "position": ball.position.tolist(),
+        "velocity": ball.velocity.tolist(),
+        "carrier_id": ball.carrier_id,
+    }
 
 
 def _ball_from_record(record: dict) -> Ball:
-    return Ball(position=vec2(*record["position"]), velocity=vec2(*record["velocity"]))
+    return Ball(
+        position=vec2(*record["position"]),
+        velocity=vec2(*record["velocity"]),
+        # `.get` (not `["carrier_id"]`): replay files written before this
+        # field existed don't have it, and "no carrier" is the correct
+        # reading for them anyway.
+        carrier_id=record.get("carrier_id"),
+    )
 
 
 def _player_to_jsonable(player: Player) -> dict:
@@ -140,15 +151,18 @@ def _player_to_jsonable(player: Player) -> dict:
         "team": player.team,
         "position": player.position.tolist(),
         "velocity": player.velocity.tolist(),
+        "facing": player.facing.tolist(),
     }
 
 
 def _player_from_record(record: dict) -> Player:
+    facing = vec2(*record["facing"]) if "facing" in record else vec2(1.0, 0.0)
     return Player(
         player_id=record["player_id"],
         team=record["team"],
         position=vec2(*record["position"]),
         velocity=vec2(*record["velocity"]),
+        facing=facing,
     )
 
 
