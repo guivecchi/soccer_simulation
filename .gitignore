@@ -11,3 +11,6 @@ dist/
 # wandb / mlflow local run artifacts (added when Stage 4 wires up tracking)
 wandb/
 mlruns/
+
+# recorded matches (viz/replay.py) — local debug artifacts, not source
+replays/
