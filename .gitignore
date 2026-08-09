@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+
+# wandb / mlflow local run artifacts (added when Stage 4 wires up tracking)
+wandb/
+mlruns/

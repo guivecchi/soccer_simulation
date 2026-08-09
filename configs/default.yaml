@@ -1,0 +1,7 @@
+# Example override file for soccersim.config.SimConfig.
+# Any subset of fields can be listed here; omitted fields keep their dataclass default.
+# Load with: soccersim.config.load_config("configs/default.yaml")
+
+pitch_width: 105.0
+pitch_height: 68.0
+seed: 0
