@@ -70,7 +70,9 @@ Two things can happen when the ball reaches the edge of the pitch:
 - It crosses a goal line *inside* the goal mouth → **goal scored**.
 - It crosses any other boundary (a touchline, or a goal line outside the goal mouth) → **out of bounds**.
 
-Since there's no throw-in/corner/kickoff logic yet, the ball is simply stopped at whichever boundary it reached. Rather than silently mutating the score or position, the simulation reports these as **events** — a list of "here's what notable things happened this step," decoupled from the state itself. That separation matters later: a renderer, a training script, and a stats tracker can each react to events without needing to diff two states to figure out what changed.
+The simulation reports these as **events** — a list of "here's what notable things happened this step," decoupled from the state itself — rather than silently mutating the score or position. That separation matters later: a renderer, a training script, and a stats tracker can each react to events without needing to diff two states to figure out what changed.
+
+`step()` itself always just stops the ball at whichever boundary it reached, no matter which event fired. **Restarting play after a goal** — putting the ball and every player back in kickoff formation — is a separate, explicit action a caller takes in response to seeing a `GOAL` event, not something baked into `step()`. Restarting after going out of bounds elsewhere (a throw-in or corner) is a different, still-deferred piece of logic — same category of fix, just not built yet, since it needs a different reset position (where the ball went out) rather than always kickoff.
 
 ### 7. Determinism: why the same inputs must always give the same outputs
 
@@ -155,6 +157,16 @@ Position (`position += velocity * dt`), by contrast, is only an *approximation* 
 
 `_resolve_ball_bounds()` checks both axes and always clamps the ball's position into the pitch rectangle on *both* — even if only one axis is used to decide which event to report. This matters at a large `dt`: a single big step can push the ball out of bounds on *both* x and y simultaneously (imagine the ball is near a corner of the pitch and moving diagonally fast). Clamping only the axis that "caused" the reported event would leave the ball outside the rectangle on the other axis. (This exact bug was caught by the `hypothesis` property test `test_ball_state_stays_finite_and_in_bounds_at_high_dt` during development — see the commit history for Stage 1.) When both axes are out simultaneously, the x-axis (goal line) takes priority for *which* event gets reported — an intentionally simple tie-break, not a physically precise treatment of pitch corners.
 
+**Restarting after a goal.** `physics/reset.py::restart_after_goal(state, config)` takes a `MatchState` and returns one with the ball and every player back in kickoff formation — but with `time` and `score` copied through unchanged from the input, unlike `build_kickoff_state()` (which always starts a fresh `0.0`/`(0, 0)`). Both share a private `_kickoff_positions(config)` helper so "what does kickoff formation look like" is defined exactly once. `step()` doesn't call this itself; a caller composes the two explicitly:
+
+```python
+state, events = step(state, actions, config)
+if any(event.type is EventType.GOAL for event in events):
+    state = restart_after_goal(state, config)
+```
+
+`scripts/run_match.py` does exactly this. Keeping the composition explicit (rather than, say, an optional flag on `step()`) means the existing goal-crossing test (`test_ball_crossing_goal_mouth_scores_and_updates_score`) keeps checking exactly what it says it checks — the ball stopped at the line, at the instant the goal is scored — while a separate test (`test_restart_after_goal_composes_with_step_to_relocate_the_ball`) checks the two-step composition callers actually use.
+
 ### 6. Possession tie-breaking
 
 `_find_possessor()` finds the nearest player within `possession_radius`, breaking ties (equal distance) by lowest `player_id`. The specific rule doesn't matter much on its own — what matters is that it's *fixed* and never depends on incidental ordering (e.g. iteration order of a dict or list), which is what keeps `step()` deterministic (Concept 7) even in the rare case of an exact distance tie.
@@ -185,4 +197,5 @@ Property-based tests are particularly good at surfacing edge cases a human would
 | Possession / kicking | `physics/step.py` | `_find_possessor()` |
 | Events | `physics/events.py` | `EventType`, `Event` |
 | Kickoff / initial state | `physics/reset.py` | `build_kickoff_state()` |
+| Restart after a goal | `physics/reset.py` | `restart_after_goal()` |
 | Correctness tests | `tests/test_physics_invariants.py`, `tests/test_reset.py` | — |

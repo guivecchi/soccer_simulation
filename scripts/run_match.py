@@ -26,7 +26,8 @@ import argparse
 import pygame
 
 from soccersim.config import load_config
-from soccersim.physics.reset import build_kickoff_state
+from soccersim.physics.events import EventType
+from soccersim.physics.reset import build_kickoff_state, restart_after_goal
 from soccersim.physics.state import PlayerAction
 from soccersim.physics.step import step
 from soccersim.physics.vector import vec2
@@ -90,6 +91,8 @@ def main() -> None:
         }
 
         state, events = step(state, actions, config)
+        if any(event.type is EventType.GOAL for event in events):
+            state = restart_after_goal(state, config)
         if writer is not None:
             writer.write_step(state, actions, events)
 

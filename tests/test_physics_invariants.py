@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 
 from soccersim.config import SimConfig
 from soccersim.physics.events import EventType
+from soccersim.physics.reset import restart_after_goal
 from soccersim.physics.state import Ball, MatchState, Player, PlayerAction
 from soccersim.physics.step import step
 from soccersim.physics.vector import magnitude, vec2
@@ -126,6 +127,33 @@ def test_ball_crossing_goal_mouth_scores_and_updates_score():
     assert state.score == (1, 0)
     # Ball should be stopped at the boundary, not left drifting past it.
     assert state.ball.velocity[0] == 0.0
+
+
+def test_restart_after_goal_composes_with_step_to_relocate_the_ball():
+    """The intended usage pattern (see physics/reset.py): callers that want a
+    goal to actually restart play call `restart_after_goal()` themselves,
+    right after `step()` reports a GOAL — `step()` alone still just stops
+    the ball at the line, as asserted by the test above.
+    """
+    config = SimConfig(
+        dt=1.0,
+        pitch_length=100.0,
+        pitch_width=60.0,
+        goal_width=10.0,
+        ball_friction=1.0,
+        players_per_team=0,
+    )
+    half_length = config.pitch_length / 2
+    ball = Ball(position=vec2(half_length - 1.0, 0.0), velocity=vec2(5.0, 0.0))
+    state = MatchState(time=0.0, ball=ball, players=[], score=(0, 0))
+
+    state, events = step(state, {}, config)
+    assert [e.type for e in events] == [EventType.GOAL]
+
+    state = restart_after_goal(state, config)
+
+    assert list(state.ball.position) == [0.0, 0.0]
+    assert state.score == (1, 0)  # the goal itself is still on the scoreboard
 
 
 def test_ball_crossing_touchline_is_out_of_bounds_not_a_goal():
