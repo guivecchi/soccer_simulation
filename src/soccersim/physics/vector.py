@@ -36,3 +36,21 @@ def clip_magnitude(v: Vec2, max_magnitude: float) -> Vec2:
     if mag <= max_magnitude or mag == 0.0:
         return np.array(v, dtype=np.float64)
     return v * (max_magnitude / mag)
+
+
+def normalize(v: Vec2) -> Vec2:
+    """Unit vector in the direction of `v`, or the zero vector if `v` is (near) zero.
+
+    Returning zero rather than raising lets callers (e.g. "which way is the
+    ball moving?") treat "no well-defined direction" as a plain data value
+    instead of a special case they have to guard against separately.
+    """
+    mag = magnitude(v)
+    if mag == 0.0:
+        return np.zeros(2, dtype=np.float64)
+    return v / mag
+
+
+def dot(a: Vec2, b: Vec2) -> float:
+    """Dot product of two 2D vectors, as a plain float."""
+    return float(np.dot(a, b))

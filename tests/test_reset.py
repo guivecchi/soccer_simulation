@@ -22,6 +22,11 @@ def test_kickoff_state_is_well_formed():
     for player in state.players:
         assert -config.pitch_width / 2 <= player.position[1] <= config.pitch_width / 2
 
+    assert state.ball.carrier_id is None
+    for player in state.players:
+        expected_facing = [1.0, 0.0] if player.team == 0 else [-1.0, 0.0]
+        assert list(player.facing) == expected_facing
+
 
 def test_kickoff_state_is_steppable():
     """Cheap end-to-end smoke test: a freshly built match should survive a

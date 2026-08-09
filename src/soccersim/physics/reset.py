@@ -82,11 +82,21 @@ def _line_up(team: int, config: SimConfig) -> list[Player]:
     # team 1 is the mirror image on the +x half.
     x = -config.pitch_length / 4 if team == 0 else config.pitch_length / 4
 
+    # Face each team toward the goal they attack — see the coordinate
+    # convention in physics/state.py.
+    facing = vec2(1.0, 0.0) if team == 0 else vec2(-1.0, 0.0)
+
     players = []
     for i in range(n):
         y = -config.pitch_width / 2 + spacing * (i + 1)
         player_id = team * n + i
         players.append(
-            Player(player_id=player_id, team=team, position=vec2(x, y), velocity=vec2(0.0, 0.0))
+            Player(
+                player_id=player_id,
+                team=team,
+                position=vec2(x, y),
+                velocity=vec2(0.0, 0.0),
+                facing=facing,
+            )
         )
     return players

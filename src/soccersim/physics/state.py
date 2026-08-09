@@ -24,13 +24,20 @@ from __future__ import annotations
 
 import dataclasses
 
-from soccersim.physics.vector import Vec2
+from soccersim.physics.vector import Vec2, vec2
 
 
 @dataclasses.dataclass
 class Ball:
     position: Vec2
     velocity: Vec2
+    # The player currently dribbling the ball (see physics/step.py's "Ball
+    # carrying" section), or None if it's a free ball. Unlike `possessor_id`
+    # (recomputed fresh every step from positions alone — see `_find_possessor`),
+    # this is genuine persistent state: whether the ball is *attached* to a
+    # player depends on what happened on contact in a *previous* step, not
+    # just on current distance.
+    carrier_id: int | None = None
 
 
 @dataclasses.dataclass
@@ -39,6 +46,14 @@ class Player:
     team: int  # 0 or 1 — see module docstring for what each team defends/attacks
     position: Vec2
     velocity: Vec2
+    # Unit vector for "which way this player is oriented" — used for kicks
+    # aimed by facing rather than by an explicit target (see
+    # `scripts/run_match.py`'s charge-and-release kick control) and available
+    # to future scripted/RL agents for the same purpose. Tracks the last
+    # *nonzero* requested movement direction (see `_step_player` in step.py);
+    # a player who stops moving keeps facing the way they were last heading,
+    # rather than snapping back to some default.
+    facing: Vec2 = dataclasses.field(default_factory=lambda: vec2(1.0, 0.0))
 
 
 @dataclasses.dataclass

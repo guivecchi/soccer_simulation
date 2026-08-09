@@ -74,16 +74,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[Read keyboard state] --> B["Build PlayerAction for player 0\n(arrow keys -> move, space -> kick toward goal)"]
+    A[Read keyboard state] --> A2["Tab: switch controlled player\nSpace held: charge kick power"]
+    A2 --> B["Build PlayerAction for controlled player\n(arrow keys -> move,\nspace released -> kick along facing,\nscaled by charge)"]
     B --> C["step(state, actions, config)"]
     C --> D{--record given?}
     D -- yes --> E["ReplayWriter.write_step(state, actions, events)"]
     D -- no --> F[draw_match_state]
     E --> F
-    F --> G["pygame.display.flip()"]
+    F --> F2[draw kick-charge bar]
+    F2 --> G["pygame.display.flip()"]
     G --> H["clock.tick(1/dt)"]
     H --> A
 ```
+
+Kick direction comes from the controlled player's `facing` (Stage 1's addition, see `stage1-concepts.md` §9), not a fixed target — so this loop can exercise passes in any direction, not just shots at goal. Charging (`_KickCharger`) and the charge bar are pure UI state local to this script; they never touch the physics kernel, which still only ever sees a single one-shot `PlayerAction.kick` vector on the frame a kick actually fires.
 
 `clock.tick(1/dt)` is pygame's fixed-rate pacing primitive: it sleeps just long enough that, called once per loop iteration, iterations happen at roughly `1/dt` per second — which is exactly what "the sim's `dt` matches wall-clock time" means.
 

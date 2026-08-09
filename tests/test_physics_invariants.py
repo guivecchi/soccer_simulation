@@ -81,6 +81,49 @@ def test_ball_stopping_distance_matches_closed_form_integral():
     assert math.isclose(state.ball.position[0], expected_distance, rel_tol=1e-3)
 
 
+def test_braking_uses_the_higher_brake_accel_cap_not_max_accel():
+    """Decelerating/reversing should be capped at `player_brake_accel`
+    (higher), while accelerating from a standstill uses `player_max_accel`
+    (lower) — even for the identical, oversized requested acceleration.
+    """
+    config = SimConfig(
+        dt=1.0 / 60.0, player_max_accel=6.0, player_brake_accel=14.0, players_per_team=0
+    )
+    huge_request = {0: PlayerAction(move=vec2(-100.0, 0.0))}
+    ball = Ball(vec2(50.0, 50.0), vec2(0.0, 0.0))
+
+    moving_player = Player(player_id=0, team=0, position=vec2(0.0, 0.0), velocity=vec2(5.0, 0.0))
+    moving_state = MatchState(time=0.0, ball=ball, players=[moving_player], score=(0, 0))
+    braked_state, _ = step(moving_state, huge_request, config)
+
+    resting_player = Player(player_id=0, team=0, position=vec2(0.0, 0.0), velocity=vec2(0.0, 0.0))
+    resting_state = MatchState(time=0.0, ball=ball, players=[resting_player], score=(0, 0))
+    accelerated_state, _ = step(resting_state, huge_request, config)
+
+    expected_braked_vx = 5.0 - config.player_brake_accel * config.dt
+    expected_accelerated_vx = 0.0 - config.player_max_accel * config.dt
+    assert math.isclose(braked_state.players[0].velocity[0], expected_braked_vx, rel_tol=1e-9)
+    assert math.isclose(
+        accelerated_state.players[0].velocity[0], expected_accelerated_vx, rel_tol=1e-9
+    )
+
+
+def test_player_facing_tracks_movement_input_and_persists_when_idle():
+    """`facing` should follow the last *nonzero* requested direction, and
+    stay put (not reset or drift) once the player stops pushing any key.
+    """
+    config = SimConfig(dt=1.0 / 60.0, players_per_team=0)
+    ball = Ball(vec2(50.0, 50.0), vec2(0.0, 0.0))
+    player = Player(player_id=0, team=0, position=vec2(0.0, 0.0), velocity=vec2(0.0, 0.0))
+    state = MatchState(time=0.0, ball=ball, players=[player], score=(0, 0))
+
+    state, _ = step(state, {0: PlayerAction(move=vec2(0.0, 5.0))}, config)
+    assert list(state.players[0].facing) == [0.0, 1.0]
+
+    state, _ = step(state, {0: PlayerAction(move=vec2(0.0, 0.0))}, config)
+    assert list(state.players[0].facing) == [0.0, 1.0]
+
+
 def test_player_reaches_and_stays_clamped_at_max_speed():
     """Under constant full-throttle acceleration, speed should hit exactly
     max_speed (via clamping) and stay there — not overshoot, not approach it

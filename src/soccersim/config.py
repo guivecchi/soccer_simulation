@@ -24,8 +24,28 @@ class SimConfig:
 
     player_max_speed: float = 8.0
     player_max_accel: float = 6.0
+    # Acceleration cap used instead of player_max_accel when the requested
+    # acceleration opposes the player's current velocity (braking / reversing
+    # direction). Real players (and most sports games) can dig in and stop or
+    # cut back much faster than they can build up speed from a standstill —
+    # see `_step_player` in physics/step.py.
+    player_brake_accel: float = 14.0
     possession_radius: float = 1.0
     max_kick_speed: float = 20.0
+
+    # How fast a carried ball's velocity is pulled to match its carrier's —
+    # deliberately much higher than player_max_accel so the ball "keeps up"
+    # almost immediately rather than visibly lagging. See physics/step.py's
+    # "Ball carrying" section.
+    dribble_accel: float = 40.0
+    # Fraction of the incoming normal-direction speed a ball keeps after
+    # bouncing off a player it wasn't received by (1.0 = perfectly elastic,
+    # 0.0 = fully absorbed). A body isn't a bouncy wall, so this is low.
+    bounce_restitution: float = 0.4
+    # Minimum cosine similarity between a player's movement input and the
+    # ball's incoming velocity for contact to count as a deliberate "receive"
+    # (trap) rather than an uncontrolled bounce. See `_is_receiving`.
+    receive_alignment_threshold: float = 0.3
 
     players_per_team: int = 5
 
