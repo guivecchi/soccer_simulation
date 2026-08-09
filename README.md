@@ -4,7 +4,7 @@ A 2D continuous-physics soccer pitch simulation, built as a hobby project to pra
 
 ## Status
 
-Stage 0 (scaffolding) complete — package skeleton, config system, and dev tooling are in place, no simulation logic yet. See [ROADMAP.md](ROADMAP.md) for the full staged plan and [docs/stages/](docs/stages/) for per-stage notes.
+Stage 1 (core physics/rules engine) complete — a deterministic, headless `step()` kernel simulates ball/player movement, kicking, possession, and goal/out-of-bounds detection. No rendering or agents yet. See [ROADMAP.md](ROADMAP.md) for the full staged plan and [docs/stages/](docs/stages/) for per-stage notes and design decisions.
 
 ## Setup
 

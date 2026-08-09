@@ -8,13 +8,13 @@ def test_defaults():
 
 def test_yaml_override(tmp_path):
     override_path = tmp_path / "override.yaml"
-    override_path.write_text("pitch_width: 50.0\nseed: 42\n")
+    override_path.write_text("pitch_length: 50.0\nseed: 42\n")
 
     cfg = load_config(override_path)
 
-    assert cfg.pitch_width == 50.0
+    assert cfg.pitch_length == 50.0
     assert cfg.seed == 42
-    assert cfg.pitch_height == SimConfig().pitch_height
+    assert cfg.pitch_width == SimConfig().pitch_width
 
 
 def test_unknown_field_raises(tmp_path):

@@ -8,6 +8,7 @@ See [ROADMAP.md](ROADMAP.md) for the staged plan. This project is a hobby learni
 - Whenever a project/architecture decision needs a human call (tooling, config format, algorithm choice, API shape, etc.), ask before proceeding — don't assume.
 - Commit and push to `origin/main` after each major change (a stage's scaffolding, a working feature, a passing test suite) — not after every tiny edit.
 - Keep [README.md](README.md) up to date whenever it's needed — new setup/run steps, status, or stack changes — as part of the same change, not as an afterthought.
+- Document code thoroughly: docstrings/comments should explain the underlying concept and *why* a choice was made (e.g. which physics/ML technique, what trade-off), not just restate what the code does — the repo owner is using this project to learn these concepts, not just to ship a working simulation.
 
 ## Confirmed stack decisions
 
