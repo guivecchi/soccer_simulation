@@ -33,11 +33,19 @@ class Ball:
     velocity: Vec2
     # The player currently dribbling the ball (see physics/step.py's "Ball
     # carrying" section), or None if it's a free ball. Unlike `possessor_id`
-    # (recomputed fresh every step from positions alone — see `_find_possessor`),
+    # (recomputed fresh every step from positions alone — see `find_possessor`),
     # this is genuine persistent state: whether the ball is *attached* to a
     # player depends on what happened on contact in a *previous* step, not
     # just on current distance.
     carrier_id: int | None = None
+    # Which team's player last made contact with the ball — a kick, a trap,
+    # or a bounce off a player's body (a deflection still counts as "that
+    # team touched it last", even though nobody controlled it). Like
+    # `carrier_id`, this is genuine history that can't be recomputed from a
+    # single frozen state; it's what `reset.py::restart_after_out_of_bounds`
+    # uses to decide throw-in/corner/goal-kick attribution. `None` means the
+    # ball hasn't been touched since the last kickoff/restart.
+    last_touch_team: int | None = None
 
 
 @dataclasses.dataclass

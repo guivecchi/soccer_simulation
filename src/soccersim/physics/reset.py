@@ -28,15 +28,39 @@ itself. Two reasons:
    means any caller can choose whether it wants that behavior, instead of it
    being baked silently into the kernel everyone calls.
 
-Throw-ins and corners (restarting after an `OUT_OF_BOUNDS` event) are a
-known, still-deferred gap — same category of fix, just not this one.
+## Throw-in / corner / goal-kick placement (`restart_after_out_of_bounds`)
+
+Added in Stage 3, alongside the rest of `restart_after_goal`'s pattern:
+`step()` only reports *that* the ball left the pitch and *which* team
+touched it last (`Event.data["side"]`, `state.ball.last_touch_team`); this
+module decides where play resumes. Real throw-in rules give the receiving
+team exclusive first touch, which isn't modeled here — this is positional
+correctness only (the ball ends up in the right place), matching the level
+of fidelity `restart_after_goal` already has (nobody is prevented from
+approaching a restart early, same as nobody prevents a quick kickoff today).
+
+`GOAL_KICK_DEPTH_M`/`CORNER_INSET_M` are simplified stand-ins for a proper
+six-yard-box / corner-arc geometry, which Stage 1 never modeled (see
+`physics/step.py`'s `_resolve_ball_bounds` — there's no goal-area concept in
+the kernel at all). A fixed depth/inset from the goal line is enough to place
+the ball somewhere sensible without inventing pitch-marking data the rest of
+the sim doesn't otherwise track.
 """
 
 from __future__ import annotations
 
 from soccersim.config import SimConfig
+from soccersim.physics.events import Event
 from soccersim.physics.state import Ball, MatchState, Player
-from soccersim.physics.vector import vec2
+from soccersim.physics.vector import Vec2, vec2
+
+# How far in front of the goal line a goal-kick is placed, and how far inset
+# from the exact corner point a corner kick is placed — see the module
+# docstring's note on why these are fixed constants rather than modeled
+# pitch-marking geometry.
+GOAL_KICK_DEPTH_M = 5.0
+CORNER_INSET_M = 1.0
+THROW_IN_INSET_M = 1.0
 
 
 def build_kickoff_state(config: SimConfig) -> MatchState:
@@ -56,6 +80,75 @@ def restart_after_goal(state: MatchState, config: SimConfig) -> MatchState:
     """
     ball, players = _kickoff_positions(config)
     return MatchState(time=state.time, ball=ball, players=players, score=state.score)
+
+
+def restart_after_out_of_bounds(state: MatchState, event: Event, config: SimConfig) -> MatchState:
+    """Place the ball for a throw-in, goal-kick, or corner after an `OUT_OF_BOUNDS` event.
+
+    Unlike `restart_after_goal`, only the ball moves — a throw-in/corner/
+    goal-kick doesn't reset every player back to kickoff formation, just
+    where the ball is placed. Callers are expected to call this only in
+    response to an `OUT_OF_BOUNDS` event from `step()`'s returned event list,
+    using the exact same `state` that event was produced from (this function
+    reads `state.ball.position` — already clamped to the boundary by
+    `step()`'s `_resolve_ball_bounds` — and `state.ball.last_touch_team` to
+    decide where and for which team).
+    """
+    side = event.data["side"]
+    x, y = state.ball.position
+
+    if side == "touchline":
+        # Inset from the exact touchline, not placed right on it: a ball
+        # sitting precisely on the boundary can be dragged back across it by
+        # a player's very next dribble step (their trapping/carrying motion
+        # doesn't know or care that it's standing on a line), immediately
+        # re-triggering another OUT_OF_BOUNDS and producing an infinite
+        # dead-ball loop at the sideline. A small inward nudge gives a
+        # carrier room to actually move before the boundary is a concern
+        # again.
+        half_width = config.pitch_width / 2
+        inset_y = half_width - THROW_IN_INSET_M if y >= 0.0 else -half_width + THROW_IN_INSET_M
+        restart_position = vec2(x, inset_y)
+    else:
+        restart_position = _goal_line_restart_position(x, y, state.ball.last_touch_team, config)
+
+    ball = Ball(position=restart_position, velocity=vec2(0.0, 0.0))
+    return MatchState(time=state.time, ball=ball, players=state.players, score=state.score)
+
+
+def _goal_line_restart_position(
+    exit_x: float, exit_y: float, last_touch_team: int | None, config: SimConfig
+) -> Vec2:
+    """Where the ball is placed after going out over a goal line (not a goal).
+
+    Team 0 attacks the `+x` goal line, team 1 attacks the `-x` one (see the
+    coordinate convention in `physics/state.py`), so whichever line the ball
+    crossed tells us which team was defending it and which was attacking.
+    Real football: if the *attacking* team touched it last (an overhit shot
+    or pass), it's a goal-kick for the defence; if the *defending* team
+    touched it last (a clearance or deflection), it's a corner for the
+    attack. `last_touch_team is None` (no recorded touch — shouldn't really
+    happen once the ball has left kickoff, but has no well-defined "who
+    touched it" answer if it somehow does) defaults to the more conservative
+    goal-kick outcome rather than gifting a corner from an untracked touch.
+    """
+    defending_team = 1 if exit_x > 0 else 0
+    attacking_team = 1 - defending_team
+    goal_line_x = config.pitch_length / 2 if defending_team == 1 else -config.pitch_length / 2
+    # Direction from the goal line back toward the center circle — both a
+    # goal-kick and a corner are placed some distance *inward* along this
+    # direction from the exact line/corner point.
+    inward_sign = -1.0 if defending_team == 1 else 1.0
+
+    is_goal_kick = last_touch_team is None or last_touch_team == attacking_team
+    if is_goal_kick:
+        return vec2(goal_line_x + inward_sign * GOAL_KICK_DEPTH_M, 0.0)
+
+    corner_y_sign = 1.0 if exit_y >= 0.0 else -1.0
+    return vec2(
+        goal_line_x + inward_sign * CORNER_INSET_M,
+        corner_y_sign * (config.pitch_width / 2 - CORNER_INSET_M),
+    )
 
 
 def _kickoff_positions(config: SimConfig) -> tuple[Ball, list[Player]]:

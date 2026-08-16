@@ -56,6 +56,7 @@ def test_replay_round_trip_preserves_config_state_actions_and_events(tmp_path):
             np.testing.assert_array_equal(loaded_player.velocity, recorded_player.velocity)
             np.testing.assert_array_equal(loaded_player.facing, recorded_player.facing)
         assert loaded_state.ball.carrier_id == recorded_state.ball.carrier_id
+        assert loaded_state.ball.last_touch_team == recorded_state.ball.last_touch_team
 
     # Step 0 has no actions/events; steps 1..3 carry the kick action we sent.
     assert replay.steps[0].actions == {}
@@ -84,6 +85,25 @@ def test_replay_round_trip_preserves_a_non_none_carrier_id(tmp_path):
     replay = load_replay(replay_path)
 
     assert replay.steps[0].state.ball.carrier_id == 0
+
+
+def test_replay_round_trip_preserves_last_touch_team(tmp_path):
+    """Same motivation as the `carrier_id`-specific test above: a fresh
+    kickoff never has a recorded touch, so `last_touch_team` needs its own
+    test to guard against a silent round-trip drop (exactly the bug that hit
+    `facing`/`carrier_id` in Stage 2 — see docs/stages/stage2.md).
+    """
+    config = SimConfig(players_per_team=0)
+    ball = Ball(position=vec2(0.2, 0.0), velocity=vec2(1.0, 0.0), last_touch_team=1)
+    state = MatchState(time=0.0, ball=ball, players=[], score=(0, 0))
+    replay_path = tmp_path / "touched.jsonl"
+
+    with ReplayWriter(replay_path, config) as writer:
+        writer.write_step(state, {}, [])
+
+    replay = load_replay(replay_path)
+
+    assert replay.steps[0].state.ball.last_touch_team == 1
 
 
 def test_replay_round_trip_preserves_none_kick_and_events(tmp_path):

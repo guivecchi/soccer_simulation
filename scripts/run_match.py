@@ -1,14 +1,14 @@
 """Run a live match in a pygame window; optionally record it to a replay file.
 
-There's no `Agent` interface yet (that's Stage 3) and no scripted opponents,
-so this script drives one player directly from the keyboard — purely a debug
-tool for eyeballing the physics kernel, not a preview of how matches will
-eventually be played. Every other player just sits still under friction-only
-physics: the point is to *see* the kernel behave correctly (acceleration,
-speed clamping, friction, kicking, dribbling, bounds/goals), which is a
-five-second visual check instead of reading numbers in a debugger.
+As of Stage 3, every player except one keyboard-controlled debug player is
+driven by `agents.scripted.ScriptedAgent` — two full scripted teams actually
+play each other, with the human slot free to jump in (or, via `--headless`,
+absent entirely) to eyeball the physics kernel or the scripted decision-making
+in real time. Role assignment (`agents.roles.assign_roles`) runs once per
+step, before any agent acts, so every scripted player's decision is
+consistent with the rest of its team that same step.
 
-Controls:
+Controls (ignored entirely with `--headless`):
     Arrow keys   accelerate the controlled player (braking/reversing is
                  quicker than accelerating from rest — see player_brake_accel
                  in config.py)
@@ -22,6 +22,7 @@ Controls:
 Usage:
     uv run python scripts/run_match.py
     uv run python scripts/run_match.py --record replays/demo.jsonl
+    uv run python scripts/run_match.py --headless --record replays/demo.jsonl
 """
 
 from __future__ import annotations
@@ -30,9 +31,15 @@ import argparse
 
 import pygame
 
+from soccersim.agents.roles import assign_roles
+from soccersim.agents.scripted import ScriptedAgent
 from soccersim.config import load_config
 from soccersim.physics.events import EventType
-from soccersim.physics.reset import build_kickoff_state, restart_after_goal
+from soccersim.physics.reset import (
+    build_kickoff_state,
+    restart_after_goal,
+    restart_after_out_of_bounds,
+)
 from soccersim.physics.state import PlayerAction
 from soccersim.physics.step import step
 from soccersim.physics.vector import vec2
@@ -96,67 +103,108 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--record", type=str, default=None, help="path to write a replay to")
     parser.add_argument("--config", type=str, default=None, help="optional YAML config override")
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="run with no window/keyboard control — every player is scripted",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="stop after this many steps (default: unlimited with a window, 3600 [~60s] headless)",
+    )
     args = parser.parse_args()
+    max_steps = args.max_steps if args.max_steps is not None else (3600 if args.headless else None)
 
     config = load_config(args.config)
     state = build_kickoff_state(config)
-
-    pygame.init()
-    screen = pygame.display.set_mode(window_size(config))
-    pygame.display.set_caption("Soccer Simulation — live match")
-    clock = pygame.time.Clock()
+    agent = ScriptedAgent()
 
     writer = ReplayWriter(args.record, config) if args.record else None
     if writer is not None:
         writer.write_step(state, {}, [])
 
-    team_0_ids = sorted(p.player_id for p in state.players if p.team == 0)
+    screen = None
+    clock = None
+    controlled_player_id = None
     controlled_index = 0
     kick_charger = _KickCharger()
+    team_0_ids = sorted(p.player_id for p in state.players if p.team == 0)
+
+    if not args.headless:
+        pygame.init()
+        screen = pygame.display.set_mode(window_size(config))
+        pygame.display.set_caption("Soccer Simulation — live match")
+        clock = pygame.time.Clock()
+        controlled_player_id = team_0_ids[controlled_index]
 
     running = True
+    step_count = 0
     while running:
         kick_power = None
-        for pygame_event in pygame.event.get():
-            is_quit = pygame_event.type == pygame.QUIT
-            is_escape = pygame_event.type == pygame.KEYDOWN and pygame_event.key == pygame.K_ESCAPE
-            if is_quit or is_escape:
-                running = False
+        if not args.headless:
+            for pygame_event in pygame.event.get():
+                is_quit = pygame_event.type == pygame.QUIT
+                is_escape = (
+                    pygame_event.type == pygame.KEYDOWN and pygame_event.key == pygame.K_ESCAPE
+                )
+                if is_quit or is_escape:
+                    running = False
 
-            is_switch = pygame_event.type == pygame.KEYDOWN and pygame_event.key == pygame.K_TAB
-            if is_switch and team_0_ids:
-                controlled_index = (controlled_index + 1) % len(team_0_ids)
+                is_switch = pygame_event.type == pygame.KEYDOWN and pygame_event.key == pygame.K_TAB
+                if is_switch and team_0_ids:
+                    controlled_index = (controlled_index + 1) % len(team_0_ids)
+                    controlled_player_id = team_0_ids[controlled_index]
 
-            is_kick_release = (
-                pygame_event.type == pygame.KEYUP and pygame_event.key == pygame.K_SPACE
-            )
-            if is_kick_release:
-                kick_power = kick_charger.release()
+                is_kick_release = (
+                    pygame_event.type == pygame.KEYUP and pygame_event.key == pygame.K_SPACE
+                )
+                if is_kick_release:
+                    kick_power = kick_charger.release()
 
-        controlled_player_id = team_0_ids[controlled_index]
-        controlled_player = next(p for p in state.players if p.player_id == controlled_player_id)
+            keys = pygame.key.get_pressed()
+            kick_charger.update(keys[pygame.K_SPACE], config.dt)
 
-        keys = pygame.key.get_pressed()
-        kick_charger.update(keys[pygame.K_SPACE], config.dt)
-
+        # Role assignment runs once per step, before any agent acts, so every
+        # scripted player's decision this step is consistent with the rest
+        # of its team — see agents/roles.py.
+        roles = assign_roles(state, config)
         actions = {
-            controlled_player_id: _read_keyboard_action(config, controlled_player, kick_power)
+            player.player_id: agent.act(player.player_id, state, roles[player.player_id], config)
+            for player in state.players
         }
+        if controlled_player_id is not None:
+            controlled_player = next(
+                p for p in state.players if p.player_id == controlled_player_id
+            )
+            actions[controlled_player_id] = _read_keyboard_action(
+                config, controlled_player, kick_power
+            )
 
         state, events = step(state, actions, config)
-        if any(event.type is EventType.GOAL for event in events):
-            state = restart_after_goal(state, config)
+        for event in events:
+            if event.type is EventType.GOAL:
+                state = restart_after_goal(state, config)
+            elif event.type is EventType.OUT_OF_BOUNDS:
+                state = restart_after_out_of_bounds(state, event, config)
         if writer is not None:
             writer.write_step(state, actions, events)
 
-        draw_match_state(screen, state, config, controlled_player_id=controlled_player_id)
-        _draw_kick_charge_bar(screen, kick_charger.charge)
-        pygame.display.flip()
-        clock.tick(round(1.0 / config.dt))
+        if not args.headless:
+            draw_match_state(screen, state, config, controlled_player_id=controlled_player_id)
+            _draw_kick_charge_bar(screen, kick_charger.charge)
+            pygame.display.flip()
+            clock.tick(round(1.0 / config.dt))
+
+        step_count += 1
+        if max_steps is not None and step_count >= max_steps:
+            running = False
 
     if writer is not None:
         writer.close()
-    pygame.quit()
+    if not args.headless:
+        pygame.quit()
 
 
 if __name__ == "__main__":

@@ -122,7 +122,7 @@ graph TD
 
 ```mermaid
 flowchart TD
-    A["Start of step: state, actions"] --> B["_find_possessor()\nusing start-of-step positions"]
+    A["Start of step: state, actions"] --> B["find_possessor()\nusing start-of-step positions"]
     B --> S["_step_player() for every player\n(semi-implicit Euler) -> new_players"]
     S --> C{"Possessor issued a kick?"}
     C -- yes --> D["ball velocity = clip_magnitude(kick, max_kick_speed)\ncarrier_id = None"]
@@ -140,7 +140,7 @@ flowchart TD
     K2 --> F
     F --> Gb["ball position += velocity * dt"]
     Gb --> H["_resolve_ball_bounds()\nclamp + GOAL / OUT_OF_BOUNDS event"]
-    H --> J["_find_possessor() again\n(new positions)"]
+    H --> J["find_possessor() again\n(new positions)"]
     J --> K{"Possessor changed?"}
     K -- yes --> L["emit POSSESSION_CHANGE event"]
     K -- no --> M["no event"]
@@ -198,7 +198,7 @@ if any(event.type is EventType.GOAL for event in events):
 
 ### 6. Possession tie-breaking
 
-`_find_possessor()` finds the nearest player within `possession_radius`, breaking ties (equal distance) by lowest `player_id`. The specific rule doesn't matter much on its own — what matters is that it's *fixed* and never depends on incidental ordering (e.g. iteration order of a dict or list), which is what keeps `step()` deterministic (Concept 7) even in the rare case of an exact distance tie.
+`find_possessor()` finds the nearest player within `possession_radius`, breaking ties (equal distance) by lowest `player_id`. The specific rule doesn't matter much on its own — what matters is that it's *fixed* and never depends on incidental ordering (e.g. iteration order of a dict or list), which is what keeps `step()` deterministic (Concept 7) even in the rare case of an exact distance tie.
 
 ### 7. Ball carrying: trap vs bounce
 
@@ -269,7 +269,7 @@ Property-based tests are particularly good at surfacing edge cases a human would
 | Player motion | `physics/step.py` | `_step_player()` |
 | Ball friction + movement | `physics/step.py` | `step()` (ball section) |
 | Boundaries / goals | `physics/step.py` | `_resolve_ball_bounds()`, `_clamp_to_pitch()` |
-| Possession / kicking | `physics/step.py` | `_find_possessor()` |
+| Possession / kicking | `physics/step.py` | `find_possessor()` |
 | Ball carrying: contact gate | `physics/step.py` | `_is_approaching()` |
 | Ball carrying: trap vs bounce decision | `physics/step.py` | `_is_receiving()` |
 | Ball carrying: dribble pursuit | `physics/step.py` | `_dribble_velocity()` |

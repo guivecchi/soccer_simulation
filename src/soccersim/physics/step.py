@@ -6,7 +6,7 @@ order. That determinism is deliberate and worth protecting as this project
 grows: it's what lets a "replay" be exactly reproducible, and it's what makes
 regression tests ("this exact scenario used to produce this exact result")
 possible at all. Every helper below is written to preserve it — e.g.
-`_find_possessor` breaks distance ties by `player_id`, never by whatever
+`find_possessor` breaks distance ties by `player_id`, never by whatever
 order players happen to be in.
 
 ## Integration scheme: semi-implicit ("symplectic") Euler
@@ -49,7 +49,7 @@ step size) is a recurring numerical-methods concept worth noticing here.
 Two related but distinct ideas share the word "possession" in everyday
 football talk, and it's worth keeping them separate here:
 
-- **`possessor_id`** (`_find_possessor`): purely geometric, recomputed fresh
+- **`possessor_id`** (`find_possessor`): purely geometric, recomputed fresh
   every step from *start-of-step* positions — "who's the nearest player
   within `possession_radius` right now." This is what decides whose `kick`
   action (if any) gets to affect the ball this step; it always exists,
@@ -79,6 +79,17 @@ A kick always takes priority over both: any player identified as
 `possessor_id` who issues a `kick` this step overrides carrying/bouncing
 entirely (one-touch shots and passes don't require having "trapped" the
 ball first), and releases the ball from any existing carrier.
+
+**Known gap, deliberately deferred (see docs/stages/stage3.md): no
+tackle/dispossession mechanic.** Once `carrier_id` is set, nothing above ever
+clears it except a kick, the ball going out of play, or a goal — a
+non-carrier opponent getting close to a carried ball has no effect at all,
+however close or fast they approach. Real dispossession would need a new
+contact case here (defender vs. carrier, likely mirroring the
+alignment/speed checks `_is_receiving` already uses for trap-vs-bounce), with
+its own tuning and tests. Stage 3's scripted defenders can pressure a
+ball-carrier but can never actually win the ball off them mid-dribble until
+this is added.
 """
 
 from __future__ import annotations
@@ -106,10 +117,11 @@ def step(
     # positions, so a kick (or a new trap/bounce) this step is judged by
     # "were you actually close enough a moment ago" rather than by where
     # everyone ends up after moving.
-    possessor_id = _find_possessor(state.ball, state.players, config.possession_radius)
+    possessor_id = find_possessor(state.ball, state.players, config.possession_radius)
     possessor = _find_player(state.players, possessor_id)
     possessor_action = actions.get(possessor_id) if possessor_id is not None else None
     carrier_id = state.ball.carrier_id
+    last_touch_team = state.ball.last_touch_team
 
     # Players move independently of the ball, so we can advance them first
     # and use each one's *just-updated* velocity as the dribble target below
@@ -128,6 +140,7 @@ def step(
         # first, and it releases the ball from whoever was carrying it.
         ball_velocity = clip_magnitude(possessor_action.kick, config.max_kick_speed)
         carrier_id = None
+        last_touch_team = possessor.team
     elif carrier_id is not None:
         # Already being dribbled — keep riding along with the carrier. See
         # the module docstring's "Ball carrying" section.
@@ -155,6 +168,9 @@ def step(
                 config.bounce_restitution,
             )
             events.append(Event(EventType.BALL_BOUNCED, {"player_id": possessor_id}))
+        # Both a trap and a bounce are genuine contact with `possessor` — see
+        # `Ball.last_touch_team`'s docstring on why a bounce counts too.
+        last_touch_team = possessor.team
     else:
         ball_velocity = state.ball.velocity
 
@@ -176,9 +192,14 @@ def step(
             state.score[1] + (scoring_team == 1),
         )
 
-    new_ball = Ball(position=ball_position, velocity=ball_velocity, carrier_id=carrier_id)
+    new_ball = Ball(
+        position=ball_position,
+        velocity=ball_velocity,
+        carrier_id=carrier_id,
+        last_touch_team=last_touch_team,
+    )
 
-    new_possessor_id = _find_possessor(new_ball, new_players, config.possession_radius)
+    new_possessor_id = find_possessor(new_ball, new_players, config.possession_radius)
     if new_possessor_id != possessor_id:
         events.append(Event(EventType.POSSESSION_CHANGE, {"player_id": new_possessor_id}))
 
@@ -219,7 +240,7 @@ def _step_player(player: Player, action: PlayerAction | None, config: SimConfig)
     return Player(player.player_id, player.team, position, velocity, facing)
 
 
-def _find_possessor(ball: Ball, players: list[Player], possession_radius: float) -> int | None:
+def find_possessor(ball: Ball, players: list[Player], possession_radius: float) -> int | None:
     """The nearest player within `possession_radius` of the ball, or None.
 
     Ties (equal distance) are broken by lowest `player_id` — an arbitrary but

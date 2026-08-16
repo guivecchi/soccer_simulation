@@ -4,7 +4,7 @@ A 2D continuous-physics soccer pitch simulation, built as a hobby project to pra
 
 ## Status
 
-Stage 2 (visualization & replay) complete — a `pygame` renderer draws live matches or recorded replays, and a JSON-Lines replay recorder/loader persists `(state, action, event)` sequences to disk. Stage 1's deterministic, headless `step()` kernel (ball/player movement, kicking, dribbling/trapping/bouncing off players, goal restarts, goal/out-of-bounds detection) has since picked up a round of pre-Stage-3 physics/rules refinements — see the addenda in [docs/stages/stage1.md](docs/stages/stage1.md) — and still has no rendering dependency. No agents yet. See [ROADMAP.md](ROADMAP.md) for the full staged plan and [docs/stages/](docs/stages/) for per-stage notes and design decisions.
+Stage 3 (baseline scripted AI) complete — two full scripted teams now play each other end-to-end: a per-player `Agent` interface, a per-team role-assignment layer (keeper/chaser/marker/support), and a `ScriptedAgent` implementing chase-ball, mark-nearest, pass-to-open-teammate, and basic keeper behaviors. The physics kernel picked up throw-in/corner/goal-kick restarts and `Ball.last_touch_team` tracking to support them. See [docs/stages/stage3.md](docs/stages/stage3.md) for scope/decisions (including a known, deliberately deferred gap: no tackle/dispossession mechanic yet). Stage 2's `pygame` renderer/JSONL replay recorder and Stage 1's deterministic, headless `step()` kernel are unchanged in spirit. See [ROADMAP.md](ROADMAP.md) for the full staged plan and [docs/stages/](docs/stages/) for per-stage notes and design decisions.
 
 ## Setup
 
@@ -18,12 +18,13 @@ uv run pytest   # run the test suite
 ## Running a match
 
 ```
-uv run python scripts/run_match.py                        # live window
+uv run python scripts/run_match.py                        # live window, two scripted teams + one human-controlled player
 uv run python scripts/run_match.py --record replays/demo.jsonl   # also record to disk
+uv run python scripts/run_match.py --headless --record replays/demo.jsonl   # no window/keyboard, fully scripted
 uv run python scripts/watch_replay.py replays/demo.jsonl   # play back a recorded replay
 ```
 
-Controls (live window): arrow keys move; hold Space to charge a kick and release to fire it in whichever direction you're currently facing (a bar shows the charge level); Tab switches which player you're controlling (highlighted with a yellow halo). Every player shows a small white nose pointing in their facing direction. Esc or closing the window quits.
+Every player except one is driven by `ScriptedAgent` (chase-ball, mark-nearest, pass-to-open-teammate, basic keeper — see [docs/stages/stage3.md](docs/stages/stage3.md)). Controls for the remaining human-controlled player (live window only): arrow keys move; hold Space to charge a kick and release to fire it in whichever direction you're currently facing (a bar shows the charge level); Tab switches which of team 0's players you're controlling (highlighted with a yellow halo). Every player shows a small white nose pointing in their facing direction. Esc or closing the window quits.
 
 ## Stack
 

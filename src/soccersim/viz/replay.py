@@ -131,6 +131,7 @@ def _ball_to_jsonable(ball: Ball) -> dict:
         "position": ball.position.tolist(),
         "velocity": ball.velocity.tolist(),
         "carrier_id": ball.carrier_id,
+        "last_touch_team": ball.last_touch_team,
     }
 
 
@@ -138,10 +139,12 @@ def _ball_from_record(record: dict) -> Ball:
     return Ball(
         position=vec2(*record["position"]),
         velocity=vec2(*record["velocity"]),
-        # `.get` (not `["carrier_id"]`): replay files written before this
-        # field existed don't have it, and "no carrier" is the correct
-        # reading for them anyway.
+        # `.get` (not `["carrier_id"]`/`["last_touch_team"]`): replay files
+        # written before these fields existed don't have them, and "no
+        # carrier" / "no recorded touch" is the correct reading for them
+        # anyway.
         carrier_id=record.get("carrier_id"),
+        last_touch_team=record.get("last_touch_team"),
     )
 
 
