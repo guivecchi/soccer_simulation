@@ -112,6 +112,8 @@ One stateless class, dispatching purely on `role.kind` — there's no per-player
 - **MARKER**: moves to a goal-side point near `role.mark_target_id` — offset from the marked opponent's position, toward this team's own goal — rather than moving directly onto the ball or the opponent themselves.
 - **SUPPORT**: moves into open space biased toward the attacking half, giving the ball-carrier a passing option without crowding them.
 
+Every one of those roles ultimately reduces to "move toward this target point," handled by one shared helper, `_move_toward` — worth its own note, since its first version had a real bug. Requesting full `player_max_accel` straight at the target with no slowdown works fine while far away, but once a player is close enough to *reach* a genuinely fixed target (the keeper's spot, a marker's shadow position, a support anchor) at max speed, there's nothing to stop them blasting straight through it — they'd overshoot, get hard-braked once their direction reversed, overshoot the other way, and settle into a slow, decaying oscillation around the point instead of arriving at it (reported directly from watching a match: a visibly "pendulum"-like swing). The fix is the standard **arrival steering behavior**: cap the desired approach speed at `sqrt(2 * player_brake_accel * distance)` — the same kinematic relation used to compute real stopping distances — so the player only starts slowing down soon enough to stop exactly at the target, timed by the actual braking rate the physics kernel enforces, not an arbitrary "slow down within N meters" rule. Far from the target the cap simply exceeds `player_max_speed` and has no effect (full-speed pursuit, unchanged); only near the target does it pull the desired speed down smoothly to zero.
+
 ### Out-of-bounds restarts (`physics/reset.py::restart_after_out_of_bounds`)
 
 ```mermaid
@@ -135,6 +137,7 @@ Every player except the one human-controlled debug player (still Tab-cycled, exa
 |---|---|
 | Role assignment: fixed keeper, single chaser (idle ball and carried-ball cases), one-to-one marking with no double-assignment | `tests/test_agents_roles.py` |
 | Scripted behaviors: keeper tracks ball's y within goal mouth, chaser moves toward loose ball, carrier dribbles/passes/shoots per the priority order, marker holds a goal-side offset | `tests/test_agents_scripted.py` |
+| Arrival steering converges to a stop at its target without the overshoot-oscillate bug (`test_move_toward_converges_to_a_stop_at_its_target_without_oscillating`) | `tests/test_agents_scripted.py` |
 | Out-of-bounds restarts: touchline placement, goal-kick vs. corner attribution from `last_touch_team` | `tests/test_physics_restarts.py` |
 | `last_touch_team` round-trips through replay files (extends the existing round-trip tests, same pattern as `facing`/`carrier_id`) | `tests/test_viz_replay.py` |
 | A full scripted match runs many steps without NaNs/instability | `tests/test_scripted_match_smoke.py` |

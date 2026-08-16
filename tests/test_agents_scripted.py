@@ -20,7 +20,8 @@ from soccersim.agents.scripted import (
 )
 from soccersim.config import SimConfig
 from soccersim.physics.state import Ball, MatchState, Player
-from soccersim.physics.vector import vec2
+from soccersim.physics.step import step
+from soccersim.physics.vector import magnitude, vec2
 
 AGENT = ScriptedAgent()
 
@@ -185,3 +186,36 @@ def test_shoot_range_constant_is_reasonable_relative_to_the_pitch():
     drifting to something larger than the pitch itself."""
     config = SimConfig()
     assert 0.0 < SHOOT_RANGE_M < config.pitch_length / 2
+
+
+def test_move_toward_converges_to_a_stop_at_its_target_without_oscillating():
+    """Regression test for a real bug: an earlier version of `_move_toward`
+    always requested full acceleration straight at the target with no
+    slowdown, so a player approaching any fixed target (a support anchor, a
+    marker's shadow point, the keeper's line) blasted straight through it,
+    hard-braked, overshot the other way, and settled into a slow, visibly
+    "pendulum"-like decaying oscillation instead of arriving. This drives a
+    SUPPORT player (whose target is a genuinely fixed point) through real
+    `step()` calls and checks it actually comes to rest near the target.
+    """
+    config = SimConfig()
+    player = Player(player_id=1, team=0, position=vec2(0.0, 0.0), velocity=vec2(0.0, 0.0))
+    ball = Ball(position=vec2(-40.0, 0.0), velocity=vec2(0.0, 0.0))
+    state = MatchState(time=0.0, ball=ball, players=[player], score=(0, 0))
+    target_x = config.pitch_length / 2 - SUPPORT_ATTACK_THIRD_MARGIN_M
+
+    max_overshoot_past_target = 0.0
+    for _ in range(600):  # 10 simulated seconds — plenty of time to arrive
+        action = AGENT.act(1, state, Role(RoleKind.SUPPORT), config)
+        state, _ = step(state, {1: action}, config)
+        overshoot = state.players[0].position[0] - target_x
+        max_overshoot_past_target = max(max_overshoot_past_target, overshoot)
+
+    final_player = state.players[0]
+    # The old bang-bang steering overshot by several meters (~5m in the
+    # scenario this mirrors) before slowly decaying — a well-behaved arrival
+    # should never overshoot past the target by more than a small fraction
+    # of that.
+    assert max_overshoot_past_target < 1.0
+    assert abs(final_player.position[0] - target_x) < 0.5
+    assert magnitude(final_player.velocity) < 0.1
