@@ -68,10 +68,12 @@ class ReplayWriter:
     """Append-only JSONL writer. Use as a context manager or call `close()`."""
 
     def __init__(self, path: str | Path, config: SimConfig):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         # Deliberately not a `with` block: the handle must stay open across
         # every `write_step()` call for the writer's lifetime, closed only
         # by `close()`/`__exit__` — that's the reason this class exists.
-        self._file = Path(path).open("w", encoding="utf-8")  # noqa: SIM115
+        self._file = path.open("w", encoding="utf-8")
         self._write({"kind": "meta", "config": dataclasses.asdict(config)})
 
     def write_step(
