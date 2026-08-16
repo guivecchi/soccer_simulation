@@ -119,13 +119,18 @@ Every one of those roles ultimately reduces to "move toward this target point," 
 ```mermaid
 flowchart TD
     A["OUT_OF_BOUNDS event\n(side, ball.last_touch_team)"] --> B{side}
-    B -- touchline --> C["place ball just inside\nthe touchline, at exit x"]
+    B -- touchline --> C["place ball just inside the touchline,\nat exit x; owner = opposite of last_touch_team"]
     B -- goal_line --> D{"last_touch_team ==\nattacking team for that line?"}
-    D -- yes --> E["goal-kick:\nball placed in goal area"]
-    D -- no --> F["corner:\nball placed at nearest corner arc"]
+    D -- yes --> E["goal-kick:\nball in goal area; owner = defending team"]
+    D -- no --> F["corner:\nball at nearest corner arc; owner = attacking team"]
+    C --> G["Ball.restart_owner_team = owner"]
+    E --> G
+    F --> G
 ```
 
 `Ball.last_touch_team` (new field, defaulting to `None`) is set in `step.py` on every deliberate or incidental contact — a kick, a trap, *or* a bounce (a deflection off a defender's body still counts as "the defense touched it last," even though nobody controlled it) — mirroring how `carrier_id` is already genuine persistent state rather than something recomputed fresh each frame. Like the Stage 2 `facing`/`carrier_id` bug, this field is round-tripped through `viz/replay.py` (`_ball_to_jsonable`/`_ball_from_record`) and tested from the moment it's added, rather than discovered missing later.
+
+**Restart entitlement (`Ball.restart_owner_team`) — why deciding the right team wasn't enough.** The first version of this code correctly computed *which* team should get a corner/goal-kick, but nothing stopped the *other* team from just walking up and touching it — confirmed, by tracing real match replays, to actually happen: the team that had just kicked the ball out regularly recovered it again within a single step, because player positions aren't reset on a restart and a stationary ball is always receivable by *anyone* nearby (`_is_receiving`'s "no momentum to cushion" rule doesn't care who's approaching). Suppressing the `CHASER` role for the non-owning team (`agents/roles.py`) stops their scripted players from being *sent* toward the ball, but can't stop a player who already happens to be standing next to the restart spot from accidentally trapping it — role assignment has no say over who's physically adjacent. So the real enforcement lives one layer down, in `find_possessor` (physics/step.py): while `restart_owner_team` is set, players from the other team are simply never candidates for possession, trapping, or having a kick action take effect — however close they are. The lock clears itself automatically the moment any contact happens at all, since by construction that contact can only ever be a legitimate touch by the entitled team.
 
 ### Wiring into the live match (`scripts/run_match.py`)
 
@@ -138,7 +143,8 @@ Every player except the one human-controlled debug player (still Tab-cycled, exa
 | Role assignment: fixed keeper, single chaser (idle ball and carried-ball cases), one-to-one marking with no double-assignment | `tests/test_agents_roles.py` |
 | Scripted behaviors: keeper tracks ball's y within goal mouth, chaser moves toward loose ball, carrier dribbles/passes/shoots per the priority order, marker holds a goal-side offset | `tests/test_agents_scripted.py` |
 | Arrival steering converges to a stop at its target without the overshoot-oscillate bug (`test_move_toward_converges_to_a_stop_at_its_target_without_oscillating`) | `tests/test_agents_scripted.py` |
-| Out-of-bounds restarts: touchline placement, goal-kick vs. corner attribution from `last_touch_team` | `tests/test_physics_restarts.py` |
+| Out-of-bounds restarts: touchline placement, goal-kick vs. corner attribution from `last_touch_team`, restart-entitlement enforcement (`find_possessor` excludes the non-owning team; the lock clears on any real touch) | `tests/test_physics_restarts.py` |
+| Locked-out team gets no `CHASER` role during a restart it doesn't own | `tests/test_agents_roles.py` |
 | `last_touch_team` round-trips through replay files (extends the existing round-trip tests, same pattern as `facing`/`carrier_id`) | `tests/test_viz_replay.py` |
 | A full scripted match runs many steps without NaNs/instability | `tests/test_scripted_match_smoke.py` |
 
@@ -153,4 +159,7 @@ Every player except the one human-controlled debug player (still Tab-cycled, exa
 | Public possession lookup (shared by `step()` and `assign_roles()`) | `physics/step.py::find_possessor` |
 | Out-of-bounds restart placement | `physics/reset.py::restart_after_out_of_bounds` |
 | `last_touch_team` tracking | `physics/state.py::Ball.last_touch_team`, set in `physics/step.py::step` |
+| Restart entitlement, enforced at the possession layer | `physics/state.py::Ball.restart_owner_team`, `physics/step.py::find_possessor` |
+| Locked-out team gets no chaser | `agents/roles.py::_assign_team_roles` (`is_locked_out_of_restart`) |
 | Scripted-vs-human wiring, `--headless` | `scripts/run_match.py` |
+| Idle keyboard-control braking, arrival dead-zone kinematics | `scripts/run_match.py::_read_keyboard_action`, `_stop_deadzone_mps` |

@@ -122,6 +122,7 @@ def step(
     possessor_action = actions.get(possessor_id) if possessor_id is not None else None
     carrier_id = state.ball.carrier_id
     last_touch_team = state.ball.last_touch_team
+    restart_owner_team = state.ball.restart_owner_team
 
     # Players move independently of the ball, so we can advance them first
     # and use each one's *just-updated* velocity as the dribble target below
@@ -141,6 +142,7 @@ def step(
         ball_velocity = clip_magnitude(possessor_action.kick, config.max_kick_speed)
         carrier_id = None
         last_touch_team = possessor.team
+        restart_owner_team = None
     elif carrier_id is not None:
         # Already being dribbled — keep riding along with the carrier. See
         # the module docstring's "Ball carrying" section.
@@ -171,6 +173,11 @@ def step(
         # Both a trap and a bounce are genuine contact with `possessor` — see
         # `Ball.last_touch_team`'s docstring on why a bounce counts too.
         last_touch_team = possessor.team
+        # `possessor` was already filtered to the entitled team by
+        # `find_possessor` if a restart lock was active, so any contact here
+        # is necessarily a legitimate touch — the restart is over, open play
+        # resumes for both teams.
+        restart_owner_team = None
     else:
         ball_velocity = state.ball.velocity
 
@@ -197,6 +204,7 @@ def step(
         velocity=ball_velocity,
         carrier_id=carrier_id,
         last_touch_team=last_touch_team,
+        restart_owner_team=restart_owner_team,
     )
 
     new_possessor_id = find_possessor(new_ball, new_players, config.possession_radius)
@@ -246,10 +254,24 @@ def find_possessor(ball: Ball, players: list[Player], possession_radius: float) 
     Ties (equal distance) are broken by lowest `player_id` — an arbitrary but
     *fixed* rule, chosen only so the result never depends on dict/list
     ordering. That's what keeps `step()` deterministic.
+
+    If `ball.restart_owner_team` is set (an active throw-in/corner/goal-kick
+    entitlement — see the field's docstring in state.py), players from the
+    *other* team aren't eligible candidates at all, however close they are.
+    This is what makes the restart entitlement actually stick: it's not just
+    that the wrong team's scripted agents won't be *sent* to chase the ball
+    (agents/roles.py handles that separately) — even a player who already
+    happens to be standing right next to the restart spot simply can't
+    trap, kick, or bounce off it until the entitled team gets there.
     """
+    eligible_players = (
+        players
+        if ball.restart_owner_team is None
+        else [p for p in players if p.team == ball.restart_owner_team]
+    )
     candidates = [
         (magnitude(player.position - ball.position), player.player_id)
-        for player in players
+        for player in eligible_players
         if magnitude(player.position - ball.position) <= possession_radius
     ]
     if not candidates:

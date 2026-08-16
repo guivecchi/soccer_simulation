@@ -126,3 +126,25 @@ def test_attacking_teams_non_chasers_support_rather_than_mark():
     roles = assign_roles(state, config)
 
     assert roles[2].kind is RoleKind.SUPPORT
+
+
+def test_team_locked_out_of_a_restart_gets_no_chaser_at_all():
+    """A throw-in/corner/goal-kick entitles one team to first touch (see
+    Ball.restart_owner_team) — the other team shouldn't even have a player
+    sent to chase the dead ball, however close one of them happens to be
+    standing to it.
+    """
+    config = SimConfig(players_per_team=2)
+    players = [
+        _player(0, team=0, x=-50.0, y=0.0),
+        _player(1, team=0, x=0.1, y=0.0),  # right next to the restart spot
+        _player(2, team=1, x=50.0, y=0.0),
+        _player(3, team=1, x=10.0, y=0.0),  # entitled team, still far away
+    ]
+    ball = Ball(position=vec2(0.0, 0.0), velocity=vec2(0.0, 0.0), restart_owner_team=1)
+    state = MatchState(time=0.0, ball=ball, players=players, score=(0, 0))
+
+    roles = assign_roles(state, config)
+
+    assert roles[1].kind is not RoleKind.CHASER  # locked-out team: nobody chases
+    assert roles[3].kind is RoleKind.CHASER  # entitled team: plays normally

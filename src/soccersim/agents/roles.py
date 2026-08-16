@@ -42,13 +42,25 @@ def _assign_team_roles(team: int, state: MatchState, config: SimConfig) -> dict[
 
     roles: dict[int, Role] = {keeper_id: Role(RoleKind.KEEPER)}
 
-    ball_handler_id = _team_ball_handler(team, state, config)
-    chaser_id = (
-        ball_handler_id
-        if ball_handler_id in outfield_ids
-        else _nearest_to_ball(outfield_ids, state)
+    # A throw-in/corner/goal-kick entitles the *other* team to first touch
+    # (see Ball.restart_owner_team's docstring) — this team gets no CHASER
+    # at all while that holds, so nobody's even sent toward the ball. The
+    # entitled team plays entirely normally; `find_possessor` (physics/
+    # step.py) is what makes the entitlement actually stick even if this
+    # team's players are already standing right next to the restart spot.
+    is_locked_out_of_restart = (
+        state.ball.restart_owner_team is not None and state.ball.restart_owner_team != team
     )
-    roles[chaser_id] = Role(RoleKind.CHASER)
+    if is_locked_out_of_restart:
+        chaser_id = None
+    else:
+        ball_handler_id = _team_ball_handler(team, state, config)
+        chaser_id = (
+            ball_handler_id
+            if ball_handler_id in outfield_ids
+            else _nearest_to_ball(outfield_ids, state)
+        )
+        roles[chaser_id] = Role(RoleKind.CHASER)
 
     remaining = [pid for pid in outfield_ids if pid != chaser_id]
     opponent_team = 1 - team

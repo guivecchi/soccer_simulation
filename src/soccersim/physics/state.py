@@ -46,6 +46,18 @@ class Ball:
     # uses to decide throw-in/corner/goal-kick attribution. `None` means the
     # ball hasn't been touched since the last kickoff/restart.
     last_touch_team: int | None = None
+    # Which team is *entitled* to first touch on a throw-in/corner/goal-kick
+    # (set by `reset.py::restart_after_out_of_bounds`), or `None` if the ball
+    # is free for either side (open play, or a kickoff/goal restart, which
+    # don't award exclusive possession the way an out-of-bounds restart
+    # does). While set, `find_possessor` (physics/step.py) only considers
+    # this team's players as possession/contact candidates at all — the
+    # other team simply can't trap, kick, or even accidentally deflect a
+    # restarted ball, the same way a real opponent isn't allowed to interfere
+    # with a throw-in before it's taken. Cleared automatically the moment
+    # any contact happens (which, thanks to that same filtering, can only
+    # ever be a legitimate touch by the entitled team).
+    restart_owner_team: int | None = None
 
 
 @dataclasses.dataclass

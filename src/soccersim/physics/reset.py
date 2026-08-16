@@ -33,11 +33,15 @@ itself. Two reasons:
 Added in Stage 3, alongside the rest of `restart_after_goal`'s pattern:
 `step()` only reports *that* the ball left the pitch and *which* team
 touched it last (`Event.data["side"]`, `state.ball.last_touch_team`); this
-module decides where play resumes. Real throw-in rules give the receiving
-team exclusive first touch, which isn't modeled here — this is positional
-correctness only (the ball ends up in the right place), matching the level
-of fidelity `restart_after_goal` already has (nobody is prevented from
-approaching a restart early, same as nobody prevents a quick kickoff today).
+module decides where play resumes *and* who's entitled to take it
+(`Ball.restart_owner_team`, enforced by `physics/step.py::find_possessor` —
+see that field's docstring in state.py). An earlier version of this
+function placed the ball correctly but didn't attribute an owning team for
+throw-ins at all, and didn't stop the *other* team from just walking up and
+retaking a restart even when it did know the right team (corners/
+goal-kicks) — reported directly as "the last team to touch the ball is able
+to kick it," confirmed by tracing real match replays where the team that
+kicked it out of bounds regained it on the very next step.
 
 `GOAL_KICK_DEPTH_M`/`CORNER_INSET_M` are simplified stand-ins for a proper
 six-yard-box / corner-arc geometry, which Stage 1 never modeled (see
@@ -96,6 +100,7 @@ def restart_after_out_of_bounds(state: MatchState, event: Event, config: SimConf
     """
     side = event.data["side"]
     x, y = state.ball.position
+    last_touch_team = state.ball.last_touch_team
 
     if side == "touchline":
         # Inset from the exact touchline, not placed right on it: a ball
@@ -109,17 +114,23 @@ def restart_after_out_of_bounds(state: MatchState, event: Event, config: SimConf
         half_width = config.pitch_width / 2
         inset_y = half_width - THROW_IN_INSET_M if y >= 0.0 else -half_width + THROW_IN_INSET_M
         restart_position = vec2(x, inset_y)
+        # Real football: whichever team *didn't* touch it last gets the
+        # throw-in. `last_touch_team is None` (shouldn't happen once the
+        # ball's left kickoff, but has no well-defined answer if it somehow
+        # does) leaves the restart unowned rather than guessing.
+        owner_team = None if last_touch_team is None else 1 - last_touch_team
     else:
-        restart_position = _goal_line_restart_position(x, y, state.ball.last_touch_team, config)
+        restart_position, owner_team = _goal_line_restart_position(x, y, last_touch_team, config)
 
-    ball = Ball(position=restart_position, velocity=vec2(0.0, 0.0))
+    ball = Ball(position=restart_position, velocity=vec2(0.0, 0.0), restart_owner_team=owner_team)
     return MatchState(time=state.time, ball=ball, players=state.players, score=state.score)
 
 
 def _goal_line_restart_position(
     exit_x: float, exit_y: float, last_touch_team: int | None, config: SimConfig
-) -> Vec2:
-    """Where the ball is placed after going out over a goal line (not a goal).
+) -> tuple[Vec2, int | None]:
+    """Where the ball is placed after going out over a goal line (not a goal),
+    and which team is entitled to take it.
 
     Team 0 attacks the `+x` goal line, team 1 attacks the `-x` one (see the
     coordinate convention in `physics/state.py`), so whichever line the ball
@@ -142,13 +153,15 @@ def _goal_line_restart_position(
 
     is_goal_kick = last_touch_team is None or last_touch_team == attacking_team
     if is_goal_kick:
-        return vec2(goal_line_x + inward_sign * GOAL_KICK_DEPTH_M, 0.0)
+        position = vec2(goal_line_x + inward_sign * GOAL_KICK_DEPTH_M, 0.0)
+        return position, defending_team
 
     corner_y_sign = 1.0 if exit_y >= 0.0 else -1.0
-    return vec2(
+    position = vec2(
         goal_line_x + inward_sign * CORNER_INSET_M,
         corner_y_sign * (config.pitch_width / 2 - CORNER_INSET_M),
     )
+    return position, attacking_team
 
 
 def _kickoff_positions(config: SimConfig) -> tuple[Ball, list[Player]]:
