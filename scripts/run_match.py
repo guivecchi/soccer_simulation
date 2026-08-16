@@ -11,7 +11,12 @@ consistent with the rest of its team that same step.
 Controls (ignored entirely with `--headless`):
     Arrow keys   accelerate the controlled player (braking/reversing is
                  quicker than accelerating from rest — see player_brake_accel
-                 in config.py)
+                 in config.py); release all of them and the player actively
+                 brakes to a stop rather than coasting (see
+                 `_read_keyboard_action`) — players have no passive friction
+                 in the physics kernel itself (only the ball does), so
+                 without this the controlled player would just glide
+                 forever at whatever speed they had
     Space        hold to charge a kick, release to fire it in whichever
                  direction the player is currently facing, at a strength
                  proportional to how long Space was held (only has an effect
@@ -42,7 +47,7 @@ from soccersim.physics.reset import (
 )
 from soccersim.physics.state import PlayerAction
 from soccersim.physics.step import step
-from soccersim.physics.vector import vec2
+from soccersim.physics.vector import magnitude, normalize, vec2
 from soccersim.viz.render import draw_match_state, window_size
 from soccersim.viz.replay import ReplayWriter
 
@@ -56,6 +61,19 @@ CHARGE_BAR_SIZE_PX = (120, 10)
 CHARGE_BAR_MARGIN_PX = 10
 CHARGE_BAR_BG_COLOR = (40, 40, 40)
 CHARGE_BAR_FILL_COLOR = (230, 200, 60)
+
+
+# Below this speed, cancel the controlled player's residual velocity
+# outright instead of braking toward zero. This can't be an arbitrary small
+# constant: braking always removes `player_brake_accel * dt` of speed in one
+# step (see `_read_keyboard_action`), so a threshold smaller than that would
+# let braking overshoot straight past zero and into the opposite direction
+# every single frame once the residual speed drops below it — a tight,
+# persistent jitter right at zero, not a clean stop (this was caught by
+# actually simulating idle deceleration, not by inspection). A function
+# rather than a module constant since it depends on `config`.
+def _stop_deadzone_mps(config) -> float:
+    return config.player_brake_accel * config.dt
 
 
 class _KickCharger:
@@ -79,6 +97,21 @@ def _read_keyboard_action(config, controlled_player, kick_power: float | None) -
     ax = (keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]) * config.player_max_accel
     ay = (keys[pygame.K_UP] - keys[pygame.K_DOWN]) * config.player_max_accel
     move = vec2(ax, ay)
+
+    if magnitude(move) < 1e-9:
+        # No directional key held. `step()`'s braking only applies when the
+        # requested acceleration actively *opposes* the current velocity
+        # (see physics/step.py's `is_braking`) — a zero request doesn't
+        # qualify, and players have no passive friction of their own (only
+        # the ball does), so without this the player would just coast
+        # forever at whatever speed they had. Actively brake to a stop
+        # instead, at the same player_brake_accel the kernel already applies
+        # whenever you steer against your own motion.
+        speed = magnitude(controlled_player.velocity)
+        if speed < _stop_deadzone_mps(config):
+            move = -controlled_player.velocity / config.dt  # cancel outright this step
+        else:
+            move = -normalize(controlled_player.velocity) * config.player_brake_accel
 
     kick = None
     if kick_power is not None:
